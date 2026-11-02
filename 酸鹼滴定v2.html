@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>強酸弱酸 × 強鹼弱鹼｜動態滴定模擬</title>
+<style>
+:root{font-family:system-ui,'Microsoft JhengHei',sans-serif;color:#172b4d;background:#f3f7fc}*{box-sizing:border-box}body{margin:0;padding:24px}.wrap{max-width:1080px;margin:auto}h1{font-size:clamp(23px,3vw,34px);margin:0 0 8px}p{color:#52657e}.panel{background:white;border:1px solid #dae4f0;border-radius:18px;padding:22px;box-shadow:0 5px 20px #2239550a;margin-top:18px}.grid{display:grid;grid-template-columns:1.4fr .8fr;gap:18px}.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:end}label{display:grid;gap:6px;font-size:14px;font-weight:650}select{padding:10px;border:1px solid #b7c9dc;border-radius:9px;min-width:145px;font-size:15px;background:white}input[type=number]{padding:10px;border:1px solid #b7c9dc;border-radius:9px;width:135px;font-size:16px}button{border:0;background:#1262ce;color:white;border-radius:9px;padding:11px 18px;cursor:pointer;font-weight:700;font-size:15px}button.secondary{background:#e8f0fa;color:#1a4d85}button:disabled{opacity:.5;cursor:default}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.metric{background:#f2f7fd;padding:14px;border-radius:12px}.metric strong{display:block;font-size:26px;margin-top:5px}.metric small{color:#5b7089}.range{width:100%;accent-color:#1262ce}canvas{display:block;width:100%;height:auto}.legend{display:flex;align-items:center;gap:8px;font-size:13px;color:#64748b}.dot{width:11px;height:11px;background:#0f6bd8;border-radius:50%}.beaker{width:180px;height:180px;margin:12px auto 8px;border:5px solid #8aa8c9;border-top:0;border-radius:0 0 30px 30px;position:relative;overflow:hidden;background:#f7fbff}.liquid{position:absolute;bottom:0;width:100%;height:70%;background:#e76a75;transition:background .2s,height .2s}.beakertext{position:absolute;inset:0;display:grid;place-items:center;font-weight:800;font-size:23px;color:#10233c;text-shadow:0 1px 2px white}.info{font-size:14px;line-height:1.75}.status{font-weight:700;color:#164b88}.foot{font-size:12px;color:#687c94}@media(max-width:780px){body{padding:12px}.grid{grid-template-columns:1fr}.metrics{grid-template-columns:repeat(3,1fr)}.metric strong{font-size:21px}.panel{padding:15px}}
+</style>
+</head>
+<body><main class="wrap">
+<h1>酸鹼滴定｜動態模擬</h1><p>選擇強酸或弱酸，以及強鹼或弱鹼，觀察四種組合的滴定曲線（25°C，理想溶液近似）。</p>
+<section class="panel"><div class="controls">
+<label>待測酸種類<select id="acidType"><option value="strong">強酸：HCl</option><option value="weak">弱酸：CH₃COOH（醋酸）</option></select></label><label>滴定鹼種類<select id="baseType"><option value="strong">強鹼：NaOH</option><option value="weak">弱鹼：NH₃（氨水）</option></select></label><label>酸初始體積（mL）<input id="acidVol" type="number" value="20" min="1" max="200" step="1"></label>
+<label>酸濃度（M）<input id="acidM" type="number" value="1" min="0.001" max="2" step="0.1"></label>
+<label>鹼濃度（M）<input id="baseM" type="number" value="1" min="0.001" max="2" step="0.1"></label>
+<button id="apply">套用設定</button><button id="play">▶ 開始滴定</button><button id="reset" class="secondary">↺ 重設</button>
+</div></section>
+<div class="grid"><section class="panel"><h2>即時滴定曲線</h2><canvas id="chart" width="800" height="510" aria-label="酸鹼滴定 pH 曲線"></canvas><div class="legend"><span class="dot"></span>藍線：理論曲線　●：目前滴定位置　虛線：當量點</div><label style="margin-top:20px">手動調整鹼加入量 <span id="sliderText">0.00 mL</span><input class="range" id="slider" type="range" min="0" max="40" value="0" step="0.01"></label></section>
+<section class="panel"><h2>即時觀察</h2><div class="metrics"><div class="metric"><small>目前 pH</small><strong id="ph">0.00</strong></div><div class="metric"><small>鹼加入量</small><strong id="added">0.00</strong><small>mL</small></div><div class="metric"><small>當量點</small><strong id="eq">20.00</strong><small>mL</small></div></div><div class="beaker"><div class="liquid" id="liquid"></div><div class="beakertext" id="beakerText">酸性</div></div><p class="status" id="status">目前為酸性溶液</p><p class="info" id="chemInfo"></p><p class="foot">顏色為教學示意，並非真實指示劑校準顏色。弱酸採醋酸 Ka = 1.8×10⁻⁵；弱鹼採氨水 Kb = 1.8×10⁻⁵。</p><p class="foot">提示：可按「開始滴定」自動播放，也能拖曳滑桿觀察當量點附近的陡升區。</p></section></div>
+</main>
+<script>
+(()=>{'use strict';const $=id=>document.getElementById(id),canvas=$('chart'),ctx=canvas.getContext('2d');let acidV=20,acidC=1,baseC=1,acidType="strong",baseType="strong",eq=20,maxV=40,v=0,playing=false,last=0,raf=0;
+function calc(x){
+ const total=(acidV+x)/1000,ca=acidC*acidV/1000/total,cb=baseC*x/1000/total;
+ const ka=1.8e-5,kbh=1e-14/1.8e-5,kw=1e-14;
+ function balance(ph){
+  const h=Math.pow(10,-ph),oh=kw/h;
+  const positive=h+(baseType==="strong"?cb:cb*h/(h+kbh));
+  const negative=oh+(acidType==="strong"?ca:ca*ka/(h+ka));
+  return positive-negative;
+ }
+ let lo=-2,hi=16;
+ for(let i=0;i<90;i++){let mid=(lo+hi)/2;if(balance(mid)>0)lo=mid;else hi=mid}
+ return (lo+hi)/2;
+}
+function fmt(n){return n.toFixed(2)}
+function pos(x,y,L,T,W,H){return [L+x/maxV*W,T+(14-y)/14*H]}
+function draw(){const w=canvas.width,h=canvas.height,L=62,R=22,T=26,B=64,W=w-L-R,H=h-T-B;ctx.clearRect(0,0,w,h);ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.font='15px system-ui';ctx.textAlign='right';ctx.textBaseline='middle';for(let y=0;y<=14;y+=2){let py=pos(0,y,L,T,W,H)[1];ctx.strokeStyle='#e6edf5';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(L,py);ctx.lineTo(L+W,py);ctx.stroke();ctx.fillStyle='#61748d';ctx.fillText(y,L-12,py)}ctx.textAlign='center';ctx.textBaseline='top';for(let i=0;i<=8;i++){let x=maxV*i/8,px=L+W*i/8;ctx.strokeStyle='#edf1f7';ctx.beginPath();ctx.moveTo(px,T);ctx.lineTo(px,T+H);ctx.stroke();ctx.fillStyle='#61748d';ctx.fillText(x.toFixed(maxV<10?1:0),px,T+H+10)}ctx.fillStyle='#344c69';ctx.fillText('加入鹼體積（mL）',L+W/2,h-20);ctx.save();ctx.translate(18,T+H/2);ctx.rotate(-Math.PI/2);ctx.fillText('pH',0,0);ctx.restore();let ex=L+eq/maxV*W;ctx.setLineDash([7,6]);ctx.strokeStyle='#e29b2d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(ex,T);ctx.lineTo(ex,T+H);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#ae6b0c';ctx.textAlign=ex>L+W*.75?'right':'left';ctx.textBaseline='top';ctx.fillText('當量點 '+fmt(eq)+' mL',ex+(ex>L+W*.75?-8:8),T+7);
+ctx.strokeStyle='#1262ce';ctx.lineWidth=3.5;ctx.lineJoin='round';ctx.beginPath();for(let i=0;i<=2500;i++){let x=i/2500*maxV,y=calc(x),[px,py]=pos(x,y,L,T,W,H);i?ctx.lineTo(px,py):ctx.moveTo(px,py)}ctx.stroke();let [px,py]=pos(v,calc(v),L,T,W,H);ctx.fillStyle='#fff';ctx.strokeStyle='#0b438e';ctx.lineWidth=4;ctx.beginPath();ctx.arc(px,py,7,0,2*Math.PI);ctx.fill();ctx.stroke()}
+function update(){let p=calc(v);$('ph').textContent=p.toFixed(2);$('added').textContent=fmt(v);$('eq').textContent=fmt(eq);$('slider').value=v;$('sliderText').textContent=fmt(v)+' mL';let text=p<6.95?'酸性':p>7.05?'鹼性':'接近中性';$('status').textContent='目前為'+text;$('beakerText').textContent=text;$('liquid').style.background=p<3?'#e9757e':p<6.95?'#f5b56c':p<=7.05?'#87c99e':p<11?'#69b3e8':'#657cdd';$('liquid').style.height=(60+Math.min(v/maxV,1)*20)+'%';draw()}
+function stop(){playing=false;$('play').textContent='▶ 開始滴定';cancelAnimationFrame(raf);last=0}
+function tick(ts){if(!playing)return;if(last){v=Math.min(maxV,v+(ts-last)/1000*maxV/24);update();if(v>=maxV){stop();return}}last=ts;raf=requestAnimationFrame(tick)}
+$('play').onclick=()=>{if(playing){stop();return}if(v>=maxV)v=0;playing=true;$('play').textContent='⏸ 暫停';last=0;raf=requestAnimationFrame(tick)};
+$('reset').onclick=()=>{stop();v=0;update()};$('slider').oninput=e=>{stop();v=Number(e.target.value);update()};$('apply').onclick=()=>{let a=Number($('acidVol').value),c=Number($('acidM').value),b=Number($('baseM').value);if(![a,c,b].every(Number.isFinite)||a<=0||a>200||c<=0||c>2||b<=0||b>2){alert('請輸入有效數值：體積 1–200 mL，濃度 0–2 M（不含 0）。');return}stop();acidV=a;acidC=c;baseC=b;acidType=$('acidType').value;baseType=$('baseType').value;eq=acidV*acidC/baseC;maxV=2*eq;$('slider').max=maxV;$('slider').step=Math.max(.001,maxV/10000);v=0;update()};function refreshInfo(){
+const an=acidType==="strong"?"HCl（強酸）":"CH₃COOH（弱酸）",bn=baseType==="strong"?"NaOH（強鹼）":"NH₃（弱鹼）";
+const reactions={"strong-strong":"HCl + NaOH → NaCl + H₂O","weak-strong":"CH₃COOH + NaOH → CH₃COONa + H₂O","strong-weak":"HCl + NH₃ → NH₄Cl","weak-weak":"CH₃COOH + NH₃ ⇌ NH₄⁺ + CH₃COO⁻"};
+$('chemInfo').textContent=`待測液：${an}；滴定液：${bn}。反應：${reactions[acidType+"-"+baseType]}。當量點為 ${fmt(eq)} mL，理論 pH 約 ${calc(eq).toFixed(2)}。`;
+}const oldUpdate=update;update=function(){oldUpdate();refreshInfo()};update();})();
+</script></body></html>
